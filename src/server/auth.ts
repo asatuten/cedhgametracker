@@ -1,5 +1,5 @@
 import { PrismaAdapter } from "@next-auth/prisma-adapter";
-import NextAuth, { type DefaultSession } from "next-auth";
+import NextAuth, { getServerSession, type DefaultSession, type NextAuthOptions } from "next-auth";
 import EmailProvider from "next-auth/providers/email";
 import GitHubProvider from "next-auth/providers/github";
 import CredentialsProvider from "next-auth/providers/credentials";
@@ -17,7 +17,7 @@ declare module "next-auth" {
   }
 }
 
-export const { handlers: authHandlers, auth, signIn, signOut } = NextAuth({
+export const authOptions: NextAuthOptions = {
   adapter: PrismaAdapter(prisma),
   session: {
     strategy: "database"
@@ -60,4 +60,10 @@ export const { handlers: authHandlers, auth, signIn, signOut } = NextAuth({
       return session;
     }
   }
-});
+};
+
+export const auth = async () => getServerSession(authOptions);
+
+export const authHandlers = NextAuth(authOptions);
+
+export { signIn, signOut } from "next-auth/react";
