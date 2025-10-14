@@ -246,8 +246,8 @@ export const dashboardKpis = cache(async (userId: string) => {
   const topArchetypeRow = await prisma.gamePlayer.groupBy({
     by: ["deckId"],
     where: { userId, result: "Win" },
-    _count: true,
-    orderBy: { _count: { sort: "desc" } },
+    _count: { _all: true },
+    orderBy: { _count: { _all: "desc" } },
     take: 1
   });
 
