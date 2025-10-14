@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "paths": { "@/*": ["./src/*"] },
+    "paths": { "@/*": ["./src/*", "./app/*", "./components/*"] },
     "lib": [
       "dom",
       "dom.iterable",
