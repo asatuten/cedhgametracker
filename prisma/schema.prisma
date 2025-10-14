@@ -3,31 +3,16 @@ generator client {
 }
 
 datasource db {
-  provider = env("DATABASE_PROVIDER")
-  url      = env("DATABASE_URL")
+  provider = "sqlite"
+  url      = "file:./dev.db"
 }
 
-enum Archetype {
-  Turbo
-  Stax
-  Midrange
-  Control
-  Combo
-  AdNauseam
-  Doomsday
-  Other
-}
-
-enum GameResult {
-  Win
-  Lose
-  Draw
-}
+// ===== NextAuth base (SQLite-safe)
 
 model User {
-  id            String   @id @default(cuid())
+  id            String    @id @default(cuid())
   name          String?
-  email         String?  @unique
+  email         String?   @unique
   emailVerified DateTime?
   image         String?
   accounts      Account[]
@@ -37,8 +22,10 @@ model User {
   events        Event[]
   pods          Pod[]
   games         Game[]
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  tags          Tag[]
+  gameUsers     GamePlayer[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 model Account {
@@ -47,16 +34,18 @@ model Account {
   type              String
   provider          String
   providerAccountId String
-  refresh_token     String? @db.Text
-  access_token      String? @db.Text
+  refresh_token     String?
+  access_token      String?
   expires_at        Int?
   token_type        String?
   scope             String?
-  id_token          String? @db.Text
+  id_token          String?
   session_state     String?
-  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@index([userId])
 }
 
 model Session {
@@ -75,38 +64,57 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
+// ===== Domain (SQLite-safe)
+// Use Strings instead of enums; validate values in app code.
+// Archetype examples: "Turbo","Stax","Midrange","Control","Combo","AdNauseam","Doomsday","Other"
+// GameResult examples: "Win","Lose","Draw"
+
 model Player {
-  id          String   @id @default(cuid())
-  userId      String
-  displayName String
-  notes       String?
-  decks       Deck[]
-  gamePlayers GamePlayer[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id            String        @id @default(cuid())
+  userId        String
+  displayName   String
+  notes         String?
+  decks         Deck[]
+  gamePlayers   GamePlayer[]
+  eliminations  GamePlayer[] @relation("Eliminations")
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, displayName])
 }
 
 model Deck {
-  id            String     @id @default(cuid())
+  id            String         @id @default(cuid())
   userId        String
   playerId      String
   name          String
   moxfieldUrl   String?
-  archetype     Archetype
+  archetype     String
   colorIdentity String
-  commanders    String[]
   companion     String?
-  isActive      Boolean   @default(true)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  player        Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  commanders    DeckCommander[]
+
+  player        Player         @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   games         GamePlayer[]
 
   @@unique([playerId, name])
+}
+
+model DeckCommander {
+  id     String @id @default(cuid())
+  deckId String
+  name   String
+  order  Int    @default(0)
+
+  deck Deck @relation(fields: [deckId], references: [id], onDelete: Cascade)
+
+  @@index([deckId])
 }
 
 model Event {
@@ -126,60 +134,66 @@ model Pod {
   userId    String
   eventId   String?
   createdAt DateTime @default(now())
-  games     Game[]
-  players   GamePlayer[]
-  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event     Event?   @relation(fields: [eventId], references: [id], onDelete: SetNull)
+  games     Game[]
 }
 
 model Game {
-  id              String      @id @default(cuid())
-  userId          String
-  podId           String
-  startedAt       DateTime
-  endedAt         DateTime?
-  turnsToWin      Int?
-  winConditionTags String[]
-  notes           String?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
-  pod             Pod         @relation(fields: [podId], references: [id], onDelete: Cascade)
-  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  gamePlayers     GamePlayer[]
-  tags            GameTag[]
+  id         String     @id @default(cuid())
+  userId     String
+  podId      String
+  startedAt  DateTime
+  endedAt    DateTime?
+  turnsToWin Int?
+  notes      String?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  pod         Pod         @relation(fields: [podId], references: [id], onDelete: Cascade)
+  gamePlayers GamePlayer[]
+  tags        GameTag[]
 }
 
 model GamePlayer {
-  id                   String     @id @default(cuid())
+  id                   String  @id @default(cuid())
   userId               String
   gameId               String
   playerId             String
   deckId               String
   seat                 Int
-  mulligans            Int
-  result               GameResult
+  mulligans            Int     @default(0)
+  result               String
   eliminatedByPlayerId String?
   turnEliminated       Int?
-  createdAt            DateTime   @default(now())
-  updatedAt            DateTime   @updatedAt
-  game                 Game       @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  player               Player     @relation(fields: [playerId], references: [id])
-  deck                 Deck       @relation(fields: [deckId], references: [id])
-  eliminatedByPlayer   Player?    @relation("Eliminations", fields: [eliminatedByPlayerId], references: [id])
-  user                 User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  player Player @relation(fields: [playerId], references: [id])
+  deck   Deck   @relation(fields: [deckId], references: [id])
+
+  eliminatedByPlayer Player? @relation("Eliminations", fields: [eliminatedByPlayerId], references: [id], onDelete: SetNull)
 
   @@unique([gameId, playerId])
   @@unique([gameId, seat])
+  @@index([gameId])
+  @@index([playerId])
+  @@index([deckId])
 }
 
 model Tag {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
   name      String
   games     GameTag[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, name])
 }
@@ -187,8 +201,9 @@ model Tag {
 model GameTag {
   gameId String
   tagId  String
-  game   Game   @relation(fields: [gameId], references: [id], onDelete: Cascade)
-  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  game Game @relation(fields: [gameId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
   @@id([gameId, tagId])
 }
